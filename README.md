@@ -25,9 +25,9 @@
 
 ## 🖼️ Screenshots
 
-| Dashboard | Heatmap Analysis |
-|-----------|------------------|
-| *Upload Zone* | *Side-by-side Comparison* |
+| Dashboard     | Heatmap Analysis          |
+| ------------- | ------------------------- |
+| _Upload Zone_ | _Side-by-side Comparison_ |
 
 ---
 
@@ -97,6 +97,7 @@ Navigate to **http://localhost:5173** in your browser.
 Analyze an image and generate attention heatmap.
 
 **Request:**
+
 ```bash
 curl -X POST "http://localhost:8000/predict" \
   -H "Content-Type: multipart/form-data" \
@@ -104,6 +105,7 @@ curl -X POST "http://localhost:8000/predict" \
 ```
 
 **Response:**
+
 ```json
 {
   "heatmap": "<base64-encoded-image>",
@@ -116,6 +118,7 @@ curl -X POST "http://localhost:8000/predict" \
 Health check endpoint.
 
 **Response:**
+
 ```json
 {
   "message": "Saliency Prediction API. POST an image to /predict."
@@ -130,12 +133,12 @@ The model has been validated against the **UEyes Dataset** - a large-scale human
 
 ### Validation Metrics
 
-| Metric | Description | Score |
-|--------|-------------|-------|
-| **CC** | Correlation Coefficient | Higher is better |
-| **SIM** | Similarity Score | Higher is better |
+| Metric  | Description                  | Score            |
+| ------- | ---------------------------- | ---------------- |
+| **CC**  | Correlation Coefficient      | Higher is better |
+| **SIM** | Similarity Score             | Higher is better |
 | **NSS** | Normalized Scanpath Saliency | Higher is better |
-| **AUC** | Area Under ROC Curve | Higher is better |
+| **AUC** | Area Under ROC Curve         | Higher is better |
 
 ### Run Validation
 
@@ -180,6 +183,7 @@ Design-Detector/
 ## 🛠️ Tech Stack
 
 ### Backend
+
 - **FastAPI** - Modern Python web framework
 - **PyTorch** - Deep learning framework
 - **TorchVision** - Pre-trained VGG16 model
@@ -187,6 +191,7 @@ Design-Detector/
 - **NumPy** - Numerical computing
 
 ### Frontend
+
 - **React 18** - UI library
 - **Vite** - Build tool
 - **Tailwind CSS 4** - Utility-first CSS
@@ -195,6 +200,7 @@ Design-Detector/
 - **Lucide React** - Icon library
 
 ### Validation
+
 - **SciPy** - Scientific computing
 - **Matplotlib** - Visualization
 - **tqdm** - Progress bars

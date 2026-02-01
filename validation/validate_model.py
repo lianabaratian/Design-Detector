@@ -129,6 +129,67 @@ def get_transform() -> transforms.Compose:
 # DATA ORGANIZATION
 # =============================================================================
 
+def organize_mit1003_dataset(
+    raw_dataset_path: str,
+    output_dir: Optional[Path] = None,
+    max_samples: int = 100
+) -> List[Dict[str, Path]]:
+    """
+    Organize MIT1003 dataset by pairing stimuli with fixation maps.
+    
+    Args:
+        raw_dataset_path: Path to the MIT1003 folder
+        output_dir: Output directory for organized data
+        max_samples: Maximum number of samples to process
+        
+    Returns:
+        List of dictionaries with 'original' and 'ground_truth' paths
+    """
+    raw_path = Path(raw_dataset_path)
+    output_dir = output_dir or Config.TEST_SAMPLES_DIR
+    
+    # Create output directories
+    originals_dir = output_dir / "originals"
+    ground_truth_dir = output_dir / "ground_truth"
+    originals_dir.mkdir(parents=True, exist_ok=True)
+    ground_truth_dir.mkdir(parents=True, exist_ok=True)
+    
+    paired_data = []
+    
+    # MIT1003 structure: ALLSTIMULI/ and ALLFIXATIONMAPS/
+    stimuli_path = raw_path / "ALLSTIMULI"
+    fixation_path = raw_path / "ALLFIXATIONMAPS"
+    
+    if stimuli_path.exists() and fixation_path.exists():
+        print(f"Found MIT1003 structure in {raw_path}")
+        stimuli_files = sorted(list(stimuli_path.glob("*.jpeg")) + list(stimuli_path.glob("*.jpg")))[:max_samples]
+        
+        for stim_file in tqdm(stimuli_files, desc="Organizing MIT1003 dataset"):
+            base_name = stim_file.stem
+            
+            # MIT1003 uses _fixMap suffix
+            fixation_file = fixation_path / f"{base_name}_fixMap.jpg"
+            
+            if fixation_file.exists():
+                new_orig = originals_dir / f"{base_name}.jpg"
+                new_gt = ground_truth_dir / f"{base_name}.jpg"
+                
+                shutil.copy2(stim_file, new_orig)
+                shutil.copy2(fixation_file, new_gt)
+                
+                paired_data.append({
+                    'original': new_orig,
+                    'ground_truth': new_gt,
+                    'name': base_name
+                })
+        
+        print(f"✓ Organized {len(paired_data)} MIT1003 image pairs")
+    else:
+        print(f"MIT1003 structure not found. Expected ALLSTIMULI/ and ALLFIXATIONMAPS/ folders.")
+    
+    return paired_data
+
+
 def organize_dataset(
     raw_dataset_path: str,
     output_dir: Optional[Path] = None,
@@ -149,6 +210,10 @@ def organize_dataset(
     """
     raw_path = Path(raw_dataset_path)
     output_dir = output_dir or Config.TEST_SAMPLES_DIR
+    
+    # Check for MIT1003 structure first
+    if (raw_path / "ALLSTIMULI").exists() and (raw_path / "ALLFIXATIONMAPS").exists():
+        return organize_mit1003_dataset(raw_dataset_path, output_dir)
     
     # Create output directories
     originals_dir = output_dir / "originals"
@@ -210,11 +275,11 @@ def organize_dataset(
         # Group by base name
         image_groups = {}
         for img_path in all_images:
-            base = img_path.stem.replace('_fixation', '').replace('_fixmap', '').replace('_heatmap', '')
+            base = img_path.stem.replace('_fixation', '').replace('_fixmap', '').replace('_heatmap', '').replace('_fixMap', '').replace('_fixPts', '')
             if base not in image_groups:
                 image_groups[base] = {'stimuli': None, 'fixation': None}
             
-            if any(x in img_path.stem.lower() for x in ['fixation', 'fixmap', 'heatmap', 'ground_truth']):
+            if any(x in img_path.stem.lower() for x in ['fixation', 'fixmap', 'heatmap', 'ground_truth']) or any(x in img_path.stem for x in ['_fixMap', '_fixPts']):
                 image_groups[base]['fixation'] = img_path
             else:
                 image_groups[base]['stimuli'] = img_path
@@ -246,9 +311,17 @@ def load_existing_test_samples() -> List[Dict[str, Path]]:
         return []
     
     paired_data = []
-    for orig_file in sorted(originals_dir.glob("*.png")):
-        gt_file = ground_truth_dir / orig_file.name
-        if gt_file.exists():
+    # Support both PNG and JPG formats
+    for orig_file in sorted(list(originals_dir.glob("*.png")) + list(originals_dir.glob("*.jpg")) + list(originals_dir.glob("*.jpeg"))):
+        # Try matching extensions
+        gt_file = None
+        for ext in [orig_file.suffix, '.png', '.jpg', '.jpeg']:
+            candidate = ground_truth_dir / f"{orig_file.stem}{ext}"
+            if candidate.exists():
+                gt_file = candidate
+                break
+        
+        if gt_file:
             paired_data.append({
                 'original': orig_file,
                 'ground_truth': gt_file,
