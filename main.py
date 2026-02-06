@@ -1,5 +1,6 @@
 
 import io
+import os
 import base64
 from typing import Tuple
 
@@ -24,33 +25,83 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Feature Extractor using VGG16 ---
-# This block uses a pre-trained VGG16 model as a feature extractor to generate a pseudo-saliency map.
-# In a production system, you would use a dedicated saliency model (e.g., DeepGaze II),
-# but for demonstration and compatibility, we use VGG16's convolutional layers.
+# --- Saliency Model (trained on MIT1003) ---
+class SaliencyNet(nn.Module):
+    """
+    VGG16-based encoder-decoder network for saliency prediction.
+    Trained on MIT1003 eye-tracking dataset.
+    """
+    
+    def __init__(self, pretrained=True):
+        super().__init__()
+        
+        # Encoder: VGG16 features
+        vgg = models.vgg16(pretrained=pretrained)
+        self.encoder = nn.Sequential(*list(vgg.features.children())[:23])
+        
+        # Decoder: Upsample to original resolution
+        self.decoder = nn.Sequential(
+            nn.Conv2d(512, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            
+            nn.Conv2d(256, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            
+            nn.Conv2d(128, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            
+            nn.Conv2d(64, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            
+            nn.Conv2d(32, 1, kernel_size=3, padding=1),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        features = self.encoder(x)
+        saliency = self.decoder(features)
+        return saliency
+
+
+# --- Fallback Feature Extractor (if no trained model available) ---
 class VGG16FeatureExtractor(nn.Module):
+    """Fallback: Uses VGG16 features as pseudo-saliency (no training required)"""
     def __init__(self):
         super().__init__()
         vgg = models.vgg16(pretrained=True)
         self.features = vgg.features
-        # Only use the first several layers for feature extraction
         self.extract_layers = nn.Sequential(*list(self.features.children())[:23])
 
     def forward(self, x):
         with torch.no_grad():
             feats = self.extract_layers(x)
-            # Collapse channel dimension to get a single-channel saliency map
             saliency = feats.mean(dim=1, keepdim=True)
-            # Upsample to input size
             saliency = nn.functional.interpolate(saliency, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
-            # Normalize to [0, 1]
             saliency = (saliency - saliency.min()) / (saliency.max() - saliency.min() + 1e-8)
-            return saliency.squeeze().cpu().numpy()
+            return saliency
 
-# Instantiate model and preprocessing
-model = VGG16FeatureExtractor()
-model.eval()
+
+# --- Load Model ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "best_saliency_model.pth")
+USE_TRAINED_MODEL = os.path.exists(MODEL_PATH)
+
+if USE_TRAINED_MODEL:
+    print(f"Loading trained saliency model from {MODEL_PATH}")
+    model = SaliencyNet(pretrained=False)
+    checkpoint = torch.load(MODEL_PATH, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    print(f"Model loaded (val_cc: {checkpoint.get('val_cc', 'N/A'):.4f})")
+else:
+    print("No trained model found. Using VGG16 feature extractor as fallback.")
+    print("Run 'python train.py' to train the model on MIT1003 dataset.")
+    model = VGG16FeatureExtractor()
+
+model.eval()
 model.to(device)
 
 transform = transforms.Compose([
@@ -109,8 +160,17 @@ async def predict(file: UploadFile = File(...)):
     img_resized, scale = resize_with_aspect_ratio(orig_np, 224)
     # Prepare for model
     input_tensor = transform(Image.fromarray(img_resized)).unsqueeze(0).to(device)
-    # Feature extraction (pseudo-saliency)
-    saliency = model(input_tensor)
+    
+    # Generate saliency map
+    with torch.no_grad():
+        saliency_output = model(input_tensor)
+        if USE_TRAINED_MODEL:
+            # Trained model outputs [B, 1, H, W] tensor
+            saliency = saliency_output.squeeze().cpu().numpy()
+        else:
+            # Fallback model already returns numpy
+            saliency = saliency_output.squeeze().cpu().numpy()
+    
     # Remove padding to match original aspect ratio
     h, w = orig_np.shape[:2]
     saliency = cv2.resize(saliency, (w, h), interpolation=cv2.INTER_LINEAR)
@@ -120,7 +180,8 @@ async def predict(file: UploadFile = File(...)):
     overlay_b64 = image_to_base64(overlay)
     return {
         "heatmap": overlay_b64,
-        "attention_score": round(attention_score, 2)
+        "attention_score": round(attention_score, 2),
+        "model_type": "MIT1003-trained" if USE_TRAINED_MODEL else "VGG16-features"
     }
 
 # --- Root Endpoint ---

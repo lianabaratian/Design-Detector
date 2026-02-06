@@ -6,3 +6,4 @@ torch
 torchvision
 numpy
 python-multipart
+tqdm
