@@ -1,0 +1,29 @@
+============================================================
+VisionUX AI - Model Validation Summary
+============================================================
+
+Dataset Size: 50 samples
+
+Metric Results (Mean ± Std):
+----------------------------------------
+  CC    : 0.2789 ± 0.1419
+          (min: -0.0024, max: 0.5777)
+
+  SIM   : 0.2710 ± 0.0581
+          (min: 0.1222, max: 0.3907)
+
+  NSS   : 0.6224 ± 0.2837
+          (min: 0.1261, max: 1.4004)
+
+  AUC   : 0.7197 ± 0.0751
+          (min: 0.5724, max: 0.8816)
+
+
+============================================================
+Metric Interpretations:
+----------------------------------------
+  CC  (Correlation): Higher is better, range [-1, 1]
+  SIM (Similarity):  Higher is better, range [0, 1]
+  NSS (Scanpath):    Higher is better, typically [0, 3+]
+  AUC (ROC Area):    Higher is better, 0.5 = chance
+============================================================
